@@ -9,11 +9,6 @@ import io
 # Configure page
 st.set_page_config(page_title="Invoice Analyzer", page_icon="📄", layout="wide")
 
-# Initialize OpenAI client
-@st.cache_resource
-def init_openai():
-    return openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-
 def encode_image(image):
     """Convert PIL image to base64 string"""
     buffered = io.BytesIO()
@@ -24,7 +19,7 @@ def extract_invoice_data(image):
     """Extract invoice data using OpenAI Vision API"""
     
     try:
-        client = init_openai()
+        client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         base64_image = encode_image(image)
         
         prompt = """
@@ -141,21 +136,21 @@ def display_extracted_data(data):
 st.title("📄 Invoice Data Extractor")
 st.markdown("Upload an invoice image and extract structured data automatically!")
 
-# Sidebar for API key
+# Sidebar
 with st.sidebar:
-    st.header("🔑 Setup")
-    api_key = st.text_input("OpenAI API Key", type="password", help="Enter your OpenAI API key")
-    
-    if api_key:
-        st.secrets["OPENAI_API_KEY"] = api_key
-        st.success("API key configured!")
-    
     st.header("📊 Instructions")
     st.markdown("""
-    1. Enter your OpenAI API key
-    2. Upload an invoice image
-    3. Click 'Extract Invoice Data'
-    4. View and download results
+    1. Upload an invoice image
+    2. Click 'Extract Invoice Data'
+    3. View extracted information
+    4. Download results as JSON/CSV
+    """)
+    
+    st.header("💡 Tips")
+    st.markdown("""
+    - Use clear, high-resolution images
+    - Ensure text is readable
+    - Works with PNG, JPG, JPEG formats
     """)
 
 # File uploader
@@ -173,53 +168,52 @@ if uploaded_file is not None:
         image = Image.open(uploaded_file)
         st.image(image, caption="Uploaded Invoice", use_column_width=True)
         
-        # Check if API key is provided
-        if not st.secrets.get("OPENAI_API_KEY"):
-            st.warning("Please enter your OpenAI API key in the sidebar to proceed.")
-        else:
-            # Extract data button
-            if st.button("🔍 Extract Invoice Data", type="primary"):
-                with st.spinner("Analyzing invoice..."):
-                    extracted_data = extract_invoice_data(image)
+        # Extract data button
+        if st.button("🔍 Extract Invoice Data", type="primary"):
+            with st.spinner("Analyzing invoice..."):
+                extracted_data = extract_invoice_data(image)
+                
+                if extracted_data:
+                    st.success("Data extracted successfully!")
                     
-                    if extracted_data:
-                        st.success("Data extracted successfully!")
-                        
-                        # Display extracted data
-                        display_extracted_data(extracted_data)
-                        
-                        # Download options
-                        st.subheader("📥 Download Options")
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # JSON download
-                            json_str = json.dumps(extracted_data, indent=2)
+                    # Display extracted data
+                    display_extracted_data(extracted_data)
+                    
+                    # Download options
+                    st.subheader("📥 Download Options")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # JSON download
+                        json_str = json.dumps(extracted_data, indent=2)
+                        st.download_button(
+                            label="📄 Download JSON",
+                            data=json_str,
+                            file_name="invoice_data.json",
+                            mime="application/json"
+                        )
+                    
+                    with col2:
+                        # CSV download (line items)
+                        if extracted_data.get("line_items"):
+                            df = pd.DataFrame(extracted_data["line_items"])
+                            csv = df.to_csv(index=False)
                             st.download_button(
-                                label="📄 Download JSON",
-                                data=json_str,
-                                file_name="invoice_data.json",
-                                mime="application/json"
+                                label="📊 Download Line Items CSV",
+                                data=csv,
+                                file_name="invoice_line_items.csv",
+                                mime="text/csv"
                             )
-                        
-                        with col2:
-                            # CSV download (line items)
-                            if extracted_data.get("line_items"):
-                                df = pd.DataFrame(extracted_data["line_items"])
-                                csv = df.to_csv(index=False)
-                                st.download_button(
-                                    label="📊 Download Line Items CSV",
-                                    data=csv,
-                                    file_name="invoice_line_items.csv",
-                                    mime="text/csv"
-                                )
-                        
-                        # Raw JSON data (expandable)
-                        with st.expander("🔍 View Raw JSON Data"):
-                            st.json(extracted_data)
-                        
+                    
+                    # Raw JSON data (expandable)
+                    with st.expander("🔍 View Raw JSON Data"):
+                        st.json(extracted_data)
+                    
     except Exception as e:
         st.error(f"Error processing image: {str(e)}")
+
+else:
+    st.info("👆 Upload an invoice image to get started!")
 
 # Footer
 st.markdown("---")
